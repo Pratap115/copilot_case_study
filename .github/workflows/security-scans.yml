@@ -1,49 +1,83 @@
 name: Security Scanning Workflow
+
 on:
   push:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   sonar-scan:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: 21
-          distribution: 'zulu'
+          distribution: "zulu"
+          cache: "maven"
+
       - name: SonarQube Analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.organization=copilotorg -Dsonar.projectKey=copilotproj
+        run: >
+          mvn -B verify
+          org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+          -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
+          -Dsonar.organization=copilotorg115
+          -Dsonar.projectKey=copilotproject115
 
   snyk-scan:
-    needs: sonar-scan
-    if: always()
     name: Snyk Security Scan
     runs-on: ubuntu-latest
+
+    # Ensures Sonar runs first
+    needs: sonar-scan
+
+    # Ensures Snyk runs even if Sonar fails
+    if: ${{ always() }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "zulu"
+          cache: "maven"
+
       - name: Snyk Security Scan
         uses: snyk/actions/maven@master
-        continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   zap-scan:
-    needs: snyk-scan
-    if: always()
     name: OWASP ZAP Scan
     runs-on: ubuntu-latest
+
+    # Ensures Snyk runs before ZAP
+    needs: snyk-scan
+
+    # Ensures ZAP runs even if Snyk fails
+    if: ${{ always() }}
+
     steps:
-      - uses: actions/checkout@v4
-      - name: OWASP ZAP Scan
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.14.0
         with:
-          target: 'https://www.zaproxy.org'
+          target: "https://www.zaproxy.org"
